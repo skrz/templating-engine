@@ -1,0 +1,156 @@
+<?php
+namespace Skrz\Templating\Engine;
+
+class ParserTest extends \PHPUnit_Framework_TestCase
+{
+
+	/**
+	 * @dataProvider sourcesProvider
+	 */
+	public function testParses($source)
+	{
+		$context = new ParserContext;
+		$context
+			->setString($source)
+			->setBaseDirectory(__DIR__);
+
+		$template = $context->parse();
+
+		$this->assertInstanceOf('\\Skrz\\Templating\\Engine\\AST\\TemplateNode', $template);
+	}
+
+	public function sourcesProvider()
+	{
+		return array(
+			array(''),
+			array('just a text'),
+			array('{* a nice comment *}'),
+			array('echo: {$hello}'),
+			array('assignment: {$hello = $world}'),
+			array('{ldelim}'),
+			array('{rdelim}'),
+			array('{$a}'),
+			array('{$a = "Hello, `$who`!"}'),
+			array('{$a = "Hello, `$me->getName()`!"}'),
+			array('{5}'),
+			array('{true}'),
+			array('{True}'),
+			array('{false}'),
+			array('{fAlse}'),
+			array('{null}'),
+			array('{NULL}'),
+			array('{"\-"}'),
+			array('{Service::GlobalThingy()}'),
+			array('{Service::GlobalThingy()->foo}'),
+			array('{Service::GlobalThingy()->foo->bar}'),
+			array('{Service::GlobalThingy()->foo->bar->baz}'),
+			array('{$a["b"]->c.d}'),
+			array('{foo()->bar->baz[$a]}'),
+			array('{A::$b}'),
+			array('{FOO::$bar->baz}'),
+			array('{FOO::$bar->baz->rocket}'),
+			array('{$smarty.get.500.600.700}'),
+			array('{$a = array()}'),
+			array('{$a = array(1, 2, 3)}'),
+			array('{$a = array(1, 2, 3,)}'),
+			array('{$a = array("foo" => "bar")}'),
+			array('{$a = array("foo" => "bar",)}'),
+			array('{$dealData = array (
+			  "catID" => 2,
+			  "catTitle" => "Pobyty",
+			  "comCount" => NULL,
+			  "dealID" => 747268,
+			  "expired" => false,
+			  "hash" => "mKLFqQ",
+			  "likesCount" => 1,
+			  "published" => true,
+			  "publishedDT" => 1390778162,
+			  "serverId" => 4,
+			  "serverDetail" => "http://skrz.cz:6005/vykupto",
+			  "serverTitle" => "Vykupto",
+			  "reviewsExt" => 0,
+			)}'),
+			array('{$dealData = [
+			  "catID" => 2,
+			  "catTitle" => "Pobyty",
+			  "comCount" => NULL,
+			  "dealID" => 747268,
+			  "expired" => false,
+			  "hash" => "mKLFqQ",
+			  "likesCount" => 1,
+			  "published" => true,
+			  "publishedDT" => 1390778162,
+			  "serverId" => 4,
+			  "serverDetail" => "http://skrz.cz:6005/vykupto",
+			  "serverTitle" => "Vykupto",
+			  "reviewsExt" => 0,
+			]}'),
+			array('{$b instanceof blabla}'),
+			array('{$a > 5}'),
+			array('{if $a} ok {/if}'),
+			array('{$smarty.now}'),
+			array('{$smarty.now > time()}'),
+			array('{if $smarty.now > time()} wow, so this is how the future looks like {/if}'),
+			array('{if 2 > 5} XHTML {elseif 5 > 2} HTML5 rocks! {else} i do everything in JSON {/if}'),
+			array('{php} whatever(); {/php}'),
+			array('{$smarty.now}'),
+			array('{$a || $b}'),
+			array('{$lastTime = microtime(true)}'),
+			array('{microtime(true) - $lastTime}'),
+			array('{microtime($a)}'),
+			array('{microtime()}'),
+			array('{microtime(true)}'),
+			array('{foo($bar, $baz)}'),
+			array('{blabla(43, microtime(true))}'),
+			array('{$a->bar()}'),
+			array('{capture foo} bar baz {/capture}'),
+			array('{capture assign=foo} bar baz {/capture}'),
+			array('{capture assign="foo"} bar baz {/capture}'),
+			array('{$foo | strip_tags}'),
+			array('{$foo | truncate : 100}'),
+			array('{$foo | truncate : 100 : "..." }'),
+			array('{$foo | escape : \'html\'}'),
+			array('{$topDealInfo->title|strip_tags:true|truncate:100:\'...\':false|escape:\'html\'}'),
+			array('{myCustomFunction a=$b c=$d}'),
+			array('{strip} wtf!!! {/strip}'),
+			array('{include "Includable.tpl"}'),
+			array('{include file="Includable.tpl"}'),
+			array('{include assign=foo file="Includable.tpl"}'),
+			array('{include "Includable.tpl" scope=parent}'),
+			array('{include file=Includable.tpl}'),
+			array('{include "Includable.tpl" inline}'),
+			array('{include "Includable.tpl" whatever="foo" theAnswer=42}'),
+			array('{foreach from=$foo item=bar} {$bar} {/foreach}'),
+			array('{foreach from=$foo item="bar"} {$bar} {/foreach}'),
+			array('{foreach from=$foo key=k item=v} {$k}: {$v} {/foreach}'),
+			array('{foreach $foo as $bar} {$bar} {/foreach}'),
+			array('{foreach $foo as $k => $v} {$k}: {$v} {/foreach}'),
+			array('{foreach $foo as $v}{$v@iteration}{/foreach}'),
+			array('{foreach $foo as $v}{$v@index}{/foreach}'),
+			array('{foreach $foo as $v}{$v@first}{/foreach}'),
+			array('{foreach $foo as $v}{$v@last}{/foreach}'),
+			array('{foreach $foo as $v}{$v@total}{/foreach}'),
+			array('{for i=1 to 5} {$i} {/for}'),
+			array('{for $i=1 to 5} {$i} {/for}'),
+			array('{for i=1+1<<5 to 1+1<<7} {$i} {/for}'),
+			array('{for $i = 1 to 10 step 2} {$i / 2} {/for}'),
+			array('{section name="foo" loop=3}{$smarty.section.foo.iteration},{/section}'),
+			array('{section name=foo loop=3}{$smarty.section.foo.iteration},{/section}'),
+			array('{section foo 3}{$smarty.section.foo.iteration},{/section}'),
+			array('{section foo loop=3}{$smarty.section.foo.iteration},{/section}'),
+			array('{section foo loop=$foo}{$smarty.section.foo.iteration},{/section}'),
+			array('    {extends "Empty.tpl"}foo'),
+			array('{* fooo!! *}{extends Empty.tpl}foo'),
+			array('{extends Empty.tpl}foo'),
+			array('{extends file="Empty.tpl"}foo'),
+			array('{block foo}{/block}'),
+			array('{block "foo"}{/block}'),
+			array('{block name="foo"}{/block}'),
+			array('{block foo append}{/block}'),
+			array('{block foo prepend}{/block}'),
+			array('{block foo}   {* something in here *}   {/block}'),
+			array('{use bar="foo\\bar"}'),
+		);
+	}
+
+}

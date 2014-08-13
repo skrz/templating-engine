@@ -1,0 +1,702 @@
+-namespace Skrz\Templating\Engine
+
+-name Parser
+
+-private context
+
+-constructor (context) {
+    $this->context = $context;
+}
+
+template
+  = extends:( ( comment / text )* e:extends -> $e
+                )?
+    st:statements !.
+    -> {
+        if ($extends !== null) {
+            $derivedContext = $this->context->derive($extends);
+            $fileName = $derivedContext->resolveFileName();
+
+            for ($parentContext = $this->context; $parentContext; $parentContext = $parentContext->getParent()) {
+                if ($parentContext->getFileName() === $fileName) {
+                    throw new ParserException(
+                        $this->context,
+                        "Recursive extending is not possible - {$this->context->getFileName()}."
+                    );
+                }
+            }
+
+            $template = $derivedContext->parse();
+            $replace = new \Skrz\Templating\Engine\AST\Walkers\BlockReplaceWalker;
+
+            $replacingBlocks = array();
+            foreach ((array)$st as $node) {
+                if ($node instanceof \Skrz\Templating\Engine\AST\BlockNode) {
+                    $replacingBlocks[] = $node;
+                }
+            }
+
+            return $replace->replaceBlocks($template, $replacingBlocks);
+        }
+
+        return new \Skrz\Templating\Engine\AST\TemplateNode($this->context, (array) $st);
+    }
+
+statements
+  = st:( text
+       / statement
+       )* -> (array) $st
+
+
+extends
+  = "{extends" __
+    ( "file=" __)?
+    file:( string
+         / [A-Za-z0-9._/-]+ !"="
+         ) __
+    "}"
+    -> $file
+
+text
+  = t:(!("{" ![ \t\r\n]) .)+ -> new \Skrz\Templating\Engine\AST\TextNode($t)
+
+statement
+  = comment
+  / block
+  / include
+  / if
+  / foreach
+  / capture
+  / ldelim
+  / rdelim
+  / php
+  / for
+  / section
+  / literal
+  / strip
+  / use
+  / assign
+  / function
+  / assignment
+  / echo
+
+comment
+  = "{*" t:(!"*}" .)* "*}" -> new \Skrz\Templating\Engine\AST\CommentNode($t)
+
+ldelim
+  = "{ldelim" __ "}" -> new \Skrz\Templating\Engine\AST\TextNode("{")
+
+rdelim
+  = "{rdelim" __ "}" -> new \Skrz\Templating\Engine\AST\TextNode("}")
+
+assignment
+  = "{$" varname:id __ path:path_expr? __ "=" __ e:expression __
+    modifiers:( "|" __ p:^ "@"? name:id __ args:( ":" __ modExpr:expression __ -> $modExpr
+                                                )*
+                -> new \Skrz\Templating\Engine\AST\ModifierNode($name, $args, $this->context->getFileName(), $p[0], $p[1])
+              )*
+    "}"
+    -> {
+        $this->context->addVariableName($varname)->addAssignedVariableName($varname);
+        return new \Skrz\Templating\Engine\AST\AssignmentNode($varname, $path, new \Skrz\Templating\Engine\AST\ExpressionNode($e, $modifiers));
+    }
+
+assign
+  = "{assign" __
+    "var="? varname:( id / string ) __
+    "value="? e:expression __
+    ( "scope=" ( id / string ) )? __
+    ( "nocache" )? __
+    "}"
+    -> {
+        $this->context->addVariableName($varname)->addAssignedVariableName($varname);
+        return new \Skrz\Templating\Engine\AST\AssignmentNode($varname, null, new \Skrz\Templating\Engine\AST\ExpressionNode($e, array()));
+    }
+
+echo
+  = "{" expr:expression __
+    modifiers:( "|" __ p:^ "@"? name:id __ args:( ":" __ modExpr:expression __ -> $modExpr
+                                                )*
+                -> new \Skrz\Templating\Engine\AST\ModifierNode($name, $args, $this->context->getFileName(), $p[0], $p[1])
+              )*
+    noFilter:( "nofilter" __ )?
+    "}"
+    -> new \Skrz\Templating\Engine\AST\EchoNode(new \Skrz\Templating\Engine\AST\ExpressionNode($expr, $modifiers), !!$noFilter)
+
+php
+  = "{php" __ "}" code:(!"{/php}" .)* "{/php" __ "}" -> new \Skrz\Templating\Engine\AST\PHPNode($code)
+
+if
+  = "{if" __ cond:expression __ "}" body:statements
+    elseifs:( "{elseif" __ elseifCond:expression __ "}" elseifBody:statements
+              -> new \Skrz\Templating\Engine\AST\IfNode($elseifCond, (array) $elseifBody)
+            )*
+    else:( "{else" __ "}" elseBody:statements -> $elseBody
+         )?
+    "{/if" __ "}"
+    -> new \Skrz\Templating\Engine\AST\IfNode($cond, $body, (array) $elseifs, (array) $else)
+
+
+use
+  = "{use" __
+    classes:( alias:id __ "=" __ class:string -> array($alias, $class)
+            )*
+    __ "}"
+    -> {
+        foreach ($classes as $classPair) {
+            list($alias, $class) = $classPair;
+            $this->context->addUse($alias, $class);
+        }
+        return new \Skrz\Templating\Engine\AST\TextNode("");
+    }
+
+foreach
+  = p:^ "{foreach" __
+    alternative:( from:( object_access_expr / array_expr ) __
+                  ( "as" __ )?
+                  key:( "$" k:id __ "=>" __ -> $k
+                      )?
+                  item:( "$" i:id __ -> $i
+                       )?
+                  -> {
+                      $ret = array(array("from", $from));
+                      if ($key !== null) {
+                          $ret = array_merge($ret, array(array("key", $key)));
+                      }
+
+                      if ($item !== null) {
+                          $ret = array_merge($ret, array(array("item", $item)));
+                      }
+
+                      return $ret;
+                  }
+                )?
+    args:( "from=" v:object_access_expr __ -> array("from", $v)
+         / "name=" v:( id / string ) __ -> array("name", $v)
+         / "key=" v:( id / string ) __ -> array("key", $v)
+         / "item=" v:( id / string ) __ -> array("item", $v)
+         )*
+    "}"
+    body:statements
+    else:( "{foreachelse" __ "}" body:statements -> $body
+         / "{else" __ "}" body:statements ->$body
+         )?
+    "{/foreach" __ "}"
+    -> {
+        $argsAssoc = array(
+            "from" => NULL,
+            "name" => NULL,
+            "key" => NULL,
+            "item" => NULL,
+        );
+
+        foreach (array_merge($args, (array) $alternative) as $arg) {
+            list($k, $v) = $arg;
+            $argsAssoc[$k] = $v;
+        }
+
+        list($row, $column) = $p;
+
+        if ($argsAssoc["from"] === null) {
+            throw new ParserException(
+                $this->context,
+                "No expression to iterate over specified for {foreach} in " .
+                $this->context->getFileName() . 
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        if ($argsAssoc["item"] === null) {
+            throw new ParserException(
+                $this->context,
+                "No item variable specified for {foreach} in " .
+                $this->context->getFileName() . 
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        return new \Skrz\Templating\Engine\AST\ForeachNode(
+            $argsAssoc["from"],
+            $argsAssoc["name"],
+            $argsAssoc["key"],
+            $argsAssoc["item"],
+            $body,
+            $else
+        );
+    }
+
+for
+  = "{for" __
+    var:( "$"? v:id __ -> $v
+        )
+    "=" __
+    from:expression __
+    "to" __
+    to:expression __
+    step:( "step" __ s:expression __ -> $s
+         )?
+    "}" body:statements
+    else:( "{forelse" __ "}" elseBody:statements -> $elseBody
+         / "{else" __ "}" elseBody:statements -> $elseBody
+         )?
+    "{/for" __ "}"
+    -> new \Skrz\Templating\Engine\AST\ForNode($var, $from, $to, $step, $body, $else)
+
+section
+  = p:^ "{section" __
+    alternative:( name:( id !"="
+                       / string
+                       )
+                  __
+                  loop:expression?
+                  __
+                  -> {
+                      if ($loop) {
+                          return array(
+                              array("name", $name),
+                              array("loop", $loop),
+                          );
+                      } else {
+                          return array(array("name", $name));
+                      }
+                  }
+                )?
+    args:( "name=" n:( string / id ) __ -> array("name", $n)
+         / "loop=" e:expression __ -> array("loop", $e)
+         )*
+    "}"
+    body:statements
+    "{/section" __ "}"
+    -> {
+        $argsAssoc = array(
+            "name" => null,
+            "loop" => null,
+        );
+
+        foreach ((array) $alternative as $arg) {
+            $argsAssoc[$arg[0]] = $arg[1];
+        }
+
+        foreach ((array) $args as $arg) {
+            $argsAssoc[$arg[0]] = $arg[1];
+        }
+
+        list($row, $column) = $p;
+
+        if ($argsAssoc["name"] === null) {
+            throw new ParserException(
+                $this->context,
+                "No section name specified for {section} in " .
+                $this->context->getFileName() . 
+                " @ " . $row . ":" . $column
+            );
+        }
+        
+        if ($argsAssoc["name"] === null) {
+            throw new ParserException(
+                $this->context,
+                "No section loop expression specified for {section} in " .
+                $this->context->getFileName() . 
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        return new \Skrz\Templating\Engine\AST\SectionNode(
+            $argsAssoc["name"],
+            $argsAssoc["loop"],
+            $body
+        );
+    }
+
+literal
+  = "{literal" __ "}" text:(!"{/literal}" .)* "{/literal" __ "}" -> new \Skrz\Templating\Engine\AST\TextNode($text)
+
+capture
+  = "{capture" __
+    name:(( id / string ) !"=")? __
+    args:( "name=" v:( id / string ) __ -> array("name", $v)
+         / "assign=" v:( id / string ) __ -> array("assign", $v)
+         / "append=" v:( id / string ) __ -> array("append", $v)
+         )*
+    "}"
+    body:statements
+    "{/capture" __ "}"
+    -> {
+        $argsAssoc = array(
+            "name" => NULL,
+            "assign" => NULL,
+            "append" => NULL,
+        );
+        foreach ($args as $param) {
+            $argsAssoc[$param[0]] = $param[1];
+        }
+
+        if (isset($name)) {
+            $argsAssoc["name"] = $name;
+        }
+
+        if (isset($argsAssoc["assign"])) {
+            $this->context
+                ->addAssignedVariableName($argsAssoc["assign"])
+                ->addVariableName($argsAssoc["assign"]);
+        }
+
+        return new \Skrz\Templating\Engine\AST\CaptureNode($argsAssoc["name"], $argsAssoc["assign"], $argsAssoc["append"], $body);
+    }
+
+strip
+  = "{strip" __ "}" body:statements "{/strip" __ "}" -> new \Skrz\Templating\Engine\AST\StripNode($body)
+
+include
+  = p:^ "{include" __
+    file:( string
+         / [A-Za-z0-9._/-]+ !"="
+         )? __
+    args:( "inline" __ -> array("inline", true)
+         / "file=" v:( string / [A-Za-z0-9._/-]+ ) __ -> array("file", $v)
+         / "assign=" v:( string / id ) __ -> array("assign", $v)
+         / "scope=" v:( string / id ) __ -> array("scope", $v)
+         / k:id "=" v:(!(id "=") expression) __ -> array($k, $v)
+         )* __
+    "}"
+    -> {
+        $argsAssoc = array(
+            "file" => NULL,
+            "assign" => NULL,
+            "scope" => NULL,
+        );
+
+        foreach ($args as $arg) {
+            list($k, $v) = $arg;
+            $argsAssoc[$k] = $v;
+        }
+
+        if ($file !== NULL) {
+            $argsAssoc["file"] = $file;
+        }
+
+        if (isset($argsAssoc["inline"])) {
+            unset($argsAssoc["inline"]);
+        }
+
+        list($row, $column) = $p;
+
+        if (!isset($argsAssoc["file"])) {
+            throw new ParserException(
+                $this->context,
+                "No file to be included specified in " . $this->context->getFileName() .
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        $file = $argsAssoc["file"];
+        unset($argsAssoc["file"]);
+
+        if (!is_string($file)) {
+            throw new ParserException(
+                $this->context,
+                "Dynamic includes are not supported in " . $this->context->getFileName() . 
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        $assign = $argsAssoc["assign"];
+        unset($argsAssoc["assign"]);
+
+        $scope = $argsAssoc["scope"];
+        unset($argsAssoc["scope"]);
+
+        $locals = $argsAssoc;
+
+        $derivedContext = $this->context->derive($file);
+        $fileName = $derivedContext->resolveFileName();
+
+        for ($parentContext = $this->context; $parentContext; $parentContext = $parentContext->getParent()) {
+            if ($parentContext->getFileName() === $fileName) {
+                throw new ParserException(
+                    $this->context,
+                    "Recursive inclusion of templates is not supported"
+                );
+            }
+        }
+        $template = $derivedContext->parse();
+
+        return new \Skrz\Templating\Engine\AST\IncludeNode($file, $assign, $scope, $locals, $template);
+    }
+
+block
+  = p:^ "{block" __
+    name:( string
+         / [A-Za-z0-9._/-]+ !"="
+         )? __
+    args:( "name=" v:( string / [A-Za-z0-9._/-]+ ) __ -> array("name", $v)
+         / "append" __ -> array("append", true)
+         / "prepend" __ -> array("prepend", true)
+         )* __
+    "}"
+    body:statements?
+    "{/block" __ "}"
+    -> {
+        $argsAssoc = array(
+            "name" => NULL,
+            "append" => NULL,
+            "prepend" => NULL,
+        );
+
+        foreach ($args as $arg) {
+            list($k, $v) = $arg;
+            $argsAssoc[$k] = $v;
+        }
+
+        if ($argsAssoc["name"] === NULL) {
+            $argsAssoc["name"] = $name;
+        }
+
+        list($row, $column) = $p;
+
+        if ($argsAssoc["name"] === NULL) {
+            throw new ParserException(
+                $this->context,
+                "No block name specified " . $this->context->getFileName() .
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        return new \Skrz\Templating\Engine\AST\BlockNode(
+            $argsAssoc["name"],
+            $argsAssoc["append"],
+            $argsAssoc["prepend"],
+            (array)$body,
+            $this->context->getFileName(),
+            $row,
+            $column
+        );
+    }
+
+reserved_function_names
+  = "include"
+  / "if"
+  / "elseif"
+  / "else"
+  / "foreach"
+  / "foreachelse"
+  / "capture"
+  / "ldelim"
+  / "rdelim"
+  / "php"
+  / "for"
+  / "forelse"
+  / "literal"
+  / "strip"
+
+function
+  = "{" !reserved_function_names p:^ fname:id __
+    args:( k:id "=" v:(!(id "=") expression) __ modifiers:( "|" __ p:^ "@"? name:id __ args:( ":" __ modExpr:expression __ -> $modExpr
+                                                                                            )*
+                                                             -> new \Skrz\Templating\Engine\AST\ModifierNode($name, $args, $this->context->getFileName(), $p[0], $p[1])
+                                                           )* __ -> array($k, new \Skrz\Templating\Engine\AST\ExpressionNode($v, (array)$modifiers))
+         )* 
+    "}"
+    -> {
+        $argsAssoc = array();
+        foreach ($args as $arg) {
+            list($k, $v) = $arg;
+            $argsAssoc[$k] = $v;
+        }
+        return new \Skrz\Templating\Engine\AST\FunctionNode($fname, $argsAssoc, $this->context->getFileName(), $p[0], $p[1]);
+    }
+
+expression
+  = assignment_expr
+
+assignment_expr
+  = lhs:left_hand_side_expr __ op:assignment_operator __ rhs:assignment_expr
+    -> new \Skrz\Templating\Engine\AST\PHPNode($lhs->getCode() . " $op (" . $rhs->getCode() . ")")
+  / cond:logical_or_expr __ "?" __ iftrue:assignment_expr __ ":" __ iffalse:assignment_expr
+    -> new \Skrz\Templating\Engine\AST\PHPNode("(" . $cond->getCode() . ") ? (" . $iftrue->getCode() . ") : (" . $iffalse->getCode() . ")")
+  / logical_or_expr
+
+assignment_operator
+  = "=" !("=") / "*=" / "/=" / "%=" / "+=" / "-=" / "<<=" / ">>=" / ">>=" / "&=" / "^=" / "|="
+
+logical_or_expr
+  = left_associative(logical_and_expr, ( "||" / [oO] [rR] ), __)
+
+logical_and_expr
+  = left_associative(equality_expr, ( "&&" / [aA] [nN] [dD] ), __)
+
+//bitwise_or_expr
+//  = left_associative(bitwise_xor_expr, "|" !"=", __)
+//
+//bitwise_xor_expr
+//  = left_associative(bitwise_and_expr, "^" !"=", __)
+//
+//bitwise_and_expr
+//  = left_associative(equality_expr, "&" !"=", __)
+
+equality_expr
+  = left_associative(relational_expr, "===" / "!==" / "==" / "!=", __)
+
+relational_expr
+  = expr:shift_expr __ [iI] [nN] [sS] [tT] [aA] [nN] [cC] [eE] [oO] [fF] __ class:id
+    -> new \Skrz\Templating\Engine\AST\PHPNode("(" . $expr->getCode() . ") instanceof " . ($this->context->hasUse($class) ? "" : "\\") . $class)
+  / left_associative(shift_expr, "<=" / ">=" / "<" / ">", __)
+
+shift_expr
+  = left_associative(additive_expr, "<<" / ">>" / ">>", __)
+
+additive_expr
+  = left_associative(multiplicative_expr, "+" !("+" / "=") / "-" !("-" / "="), __)
+
+multiplicative_expr
+  = left_associative(unary_expr, ("*" / "/" / "%") !"=", __)
+
+unary_expr
+  = "++" __ expr:left_hand_side_expr -> new \Skrz\Templating\Engine\AST\PHPNode("++" . $expr->getCode())
+  / "--" __ expr:left_hand_side_expr -> new \Skrz\Templating\Engine\AST\PHPNode("--" . $expr->getCode())
+  / "+" __ expr:unary_expr -> new \Skrz\Templating\Engine\AST\PHPNode("+(" . $expr->getCode() . ")")
+  / "-" __ expr:unary_expr -> new \Skrz\Templating\Engine\AST\PHPNode("-(" . $expr->getCode() . ")")
+  / "~" __ expr:unary_expr -> new \Skrz\Templating\Engine\AST\PHPNode("~(" . $expr->getCode() . ")")
+  / "!" __ expr:unary_expr -> new \Skrz\Templating\Engine\AST\PHPNode("!(" . $expr->getCode() . ")")
+  / "(" cast:( "string" / "bool" "ean"? / "int" / "float" / "object" / "array" ) ")" __ expr:unary_expr
+    -> new \Skrz\Templating\Engine\AST\PHPNode("($cast) (" . $expr->getCode() . ")")
+  / array_expr
+  / expr:left_hand_side_expr op:( "++" / "--" ) -> new \Skrz\Templating\Engine\AST\PHPNode($expr->getCode() . $op)
+  / object_access_expr
+
+array_expr
+  = "[" __
+    values:( key:( k:( string / id / n:number -> { return $n->getCode(); } ) __ "=>" -> $k
+                 )? __
+             value:expression __
+             ("," __)? -> array($key, $value)
+           )*
+    "]"
+    -> {
+        $valuesString = "";
+
+        foreach ($values as $valuePair) {
+            list($key, $value) = $valuePair;
+            $valuesString .= ($key !== null ? var_export($key, true) . "=>" : "") . $value->getCode() . ",";
+        }
+
+        return new \Skrz\Templating\Engine\AST\PHPNode("array(" . $valuesString . ")");
+    }
+    / "array" __ "(" __
+    values:( key:( k:( string / id / number ) __ "=>" -> $k
+                 )? __
+             value:expression __
+             ("," __)? -> array($key, $value)
+           )*
+    ")"
+    -> {
+        $valuesString = "";
+
+        foreach ($values as $valuePair) {
+            list($key, $value) = $valuePair;
+            $valuesString .= ($key !== null ? var_export($key, true) . "=>" : "") . $value->getCode() . ",";
+        }
+        
+        return new \Skrz\Templating\Engine\AST\PHPNode("array(" . $valuesString . ")");
+    }
+
+object_access_expr
+  = expr:primary_expr mcalls:( __ "->" __ fcall:function_call_expr -> "->" . $fcall->getCode()
+                             / __ "->" __ prop:id path:path_expr? -> "->$prop" . $path
+                             )*
+    -> new \Skrz\Templating\Engine\AST\PHPNode($expr->getCode() . implode("", (array) $mcalls))
+
+primary_expr
+  = static_expr
+  / function_call_expr
+  / number
+  / interpolated_string
+  / [tT] [rR] [uU] [eE] ![A-Za-z] -> new \Skrz\Templating\Engine\AST\PHPNode("true")
+  / [fF] [aA] [lL] [sS] [eE] ![A-Za-z] -> new \Skrz\Templating\Engine\AST\PHPNode("false")
+  / [nN] [uU] [lL] [lL] ![A-Za-z] -> new \Skrz\Templating\Engine\AST\PHPNode("null")
+  / left_hand_side_expr
+  / "(" __ expr:expression __ ")" -> $expr
+
+static_expr
+  = class:id "::" f:function_call_expr -> new \Skrz\Templating\Engine\AST\PHPNode($class . "::" . $f->getCode())
+  / class:id "::" "$" varname:id -> new \Skrz\Templating\Engine\AST\PHPNode($class . "::\$" . $varname)
+  / class:id "::" constant:id -> new \Skrz\Templating\Engine\AST\PHPNode($class . "::" . $constant)
+
+function_call_expr
+  = fname:( v:"$"? i:id -> { return $v . $i; }) __
+    "(" __ args:( first:assignment_expr rest:( __ "," __ expr:assignment_expr -> $expr->getCode()
+                                             )*
+                  -> array_merge(array($first->getCode()), $rest)
+                )?
+    __ ")"
+    -> new \Skrz\Templating\Engine\AST\PHPNode("$fname(" . implode(", ", (array) $args) . ")")
+
+left_hand_side_expr
+  = "$" varname:id "@" at:( "index" / "iteration" / "first" / "last" / "total" ) -> {
+      $this->context->addVariableName($varname);
+      return new \Skrz\Templating\Engine\AST\PHPNode("\$smarty->foreach->" . $varname . "->" . $at);
+  }
+  / "$" varname:id path:path_expr? -> {
+      $this->context->addVariableName($varname);
+      return new \Skrz\Templating\Engine\AST\PHPNode("\$" . $varname . $path);
+  }
+
+path_expr
+  = parts:( "." next:id -> "->$next"
+          / "." "$" next:id -> "->\$$next"
+          / "." next:left_hand_side_expr -> "->{" . $next->getCode() . "}"
+          / "." next:number -> "[" . $next->getCode() . "]"
+          / "->" next:id !(__ "(") -> "->$next"
+          / "[" next:id "]" -> "[" . var_export($next, true) . "]"
+          / "[" next:expression "]" -> "[" . $next->getCode() . "]"
+          / "[" __ "]" -> "[]"
+          )+
+    -> implode("", $parts)
+
+number
+  = hex:"0x"? a:[0-9]+ b:( "." [0-9]+ )? c:( [eE] [+-]? [0-9]+ )? -> new \Skrz\Templating\Engine\AST\PHPNode($hex . $a . $b . $c)
+
+
+interpolated_string
+  = ["] parts:( [`] expr:object_access_expr [`] -> $expr->getCode()
+              / value:(!["`] char)+ -> var_export(implode("", $value), true)
+              )* ["]
+    -> new \Skrz\Templating\Engine\AST\PHPNode("(" . (count($parts) ? implode(") . (", $parts) : "''") . ")")
+  / ['] parts:( [`] expr:object_access_expr [`] -> $expr->getCode()
+              / value:(!['`] char)+ -> var_export(implode("", $value), true)
+              )* [']
+    -> new \Skrz\Templating\Engine\AST\PHPNode("(" . (count($parts) ? implode(") . (", $parts) : "''") . ")")
+
+string
+  = ["] value:(!["] char)* ["] -> implode("", $value)
+  / ['] value:(!['] char)* ['] -> implode("", $value)
+
+char
+  = !"\\" .
+  / "\\n" -> "\n"
+  / "\\r" -> "\r"
+  / "\\t" -> "\t"
+  / "\\\\" -> "\\"
+  / "\\\"" -> '"'
+  / "\\" ['] -> "'"
+  / "\\]" -> ']'
+  / "\\x" a:[0-9a-fA-F] b:[0-9a-fA-F] -> chr(hexdec($a . $b))
+  / "\\" c:. -> "\\" . $c
+
+
+id
+  = [a-zA-Z_] [a-zA-Z0-9_]*
+
+__
+  = [ \t\r\n]*
+
+left_associative(expression, op, ws)
+  = left:expression ( ws op:op ws ( right:expression
+                                    {
+                                        $left = new \Skrz\Templating\Engine\AST\PHPNode(
+                                            "(" . $left->getCode() . ") $op (" .  $right->getCode() . ")"
+                                        );
+                                    }
+                                  )
+                    )*
+    -> $left
