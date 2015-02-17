@@ -150,6 +150,13 @@ class ParserTest extends \PHPUnit_Framework_TestCase
 			array('{block foo prepend}{/block}'),
 			array('{block foo}   {* something in here *}   {/block}'),
 			array('{use bar="foo\\bar"}'),
+			array('{call myCustomFunction}'),
+			array('{call name="myCustomFunction" with="arguments"}'),
+			array('{call myCustomFunction with="arguments"}'),
+			array('{call myCustomFunction with="more" arguments=42}'),
+			array('{function empty_fn}{/function}'),
+			array('{function name="barbar"}barbar{/function}'),
+			array('{function form_widget}{/function}{form_widget}'),
 		);
 	}
 

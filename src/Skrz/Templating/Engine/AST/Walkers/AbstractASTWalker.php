@@ -10,6 +10,7 @@ use Skrz\Templating\Engine\AST\EchoNode;
 use Skrz\Templating\Engine\AST\ExpressionNode;
 use Skrz\Templating\Engine\AST\ForeachNode;
 use Skrz\Templating\Engine\AST\ForNode;
+use Skrz\Templating\Engine\AST\FunctionDeclarationNode;
 use Skrz\Templating\Engine\AST\FunctionNode;
 use Skrz\Templating\Engine\AST\IfNode;
 use Skrz\Templating\Engine\AST\IncludeNode;
@@ -71,6 +72,8 @@ abstract class AbstractASTWalker
 	abstract protected function walkForeach(ForeachNode $foreach);
 
 	abstract protected function walkFunction(FunctionNode $function);
+
+	abstract protected function walkFunctionDeclaration(FunctionDeclarationNode $functionDeclaration);
 
 	abstract protected function walkIf(IfNode $if);
 

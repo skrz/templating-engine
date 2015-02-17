@@ -105,6 +105,9 @@ class CompilerTest extends \PHPUnit_Framework_TestCase
 			array('{inferno hell="BAR"}', '666 BAR 666', array()),
 			array('{inferno hell="<b>BAR</b>"}', '666 <b>BAR</b> 666', array()),
 			array('{inferno hell="<b>BAR</b>"|strip_tags}', '666 BAR 666', array()),
+			array('{call inferno hell="<b>BAR</b>"}', '666 <b>BAR</b> 666', array()),
+			array('{call name=inferno hell="<b>BAR</b>"}', '666 <b>BAR</b> 666', array()),
+			array('{call name="inferno" hell="<b>BAR</b>"}', '666 <b>BAR</b> 666', array()),
 			array('{if $x > 5}>5{elseif $x > 3}>3{else}<=3{/if}', '>5', array("x" => 10)),
 			array('{if $x > 5}>5{elseif $x > 3}>3{else}<=3{/if}', '>3', array("x" => 5)),
 			array('{if $x > 5}>5{elseif $x > 3}>3{else}<=3{/if}', '>3', array("x" => 4)),
@@ -134,6 +137,13 @@ class CompilerTest extends \PHPUnit_Framework_TestCase
 			array('{$x}', '&lt;b&gt;foo&lt;/b&gt;', array("x" => "<b>foo</b>")),
 			array('{$x nofilter}', '<b>foo</b>', array("x" => "<b>foo</b>")),
 			array('{CompilerTest::formatStringPretty("foo")}', '   foo   ', array()),
+			array('{function emptyFn}{/function}', '', array()),
+			array('{function emptyFn}{/function}{emptyFn}', '', array()),
+			array('{function name="barbar"}barbar{/function}{call barbar}', 'barbar', array()),
+			array('{function menu}{if $level < 3}{$level},{menu level=$level+1}{/if}{/function}{menu level=0}', '0,1,2,', array()),
+			array('{function myFn withDefault="hey!"}{$withDefault}{/function}{myFn}', 'hey!', array()),
+			array('{function menu level=0}{if $level < 3}{$level},{menu level=$level+1}{/if}{/function}{menu}', '0,1,2,', array()),
+			array('{function x}{$foo}{/function}{x}', 'bar', array('foo' => 'bar')),
 		);
 	}
 

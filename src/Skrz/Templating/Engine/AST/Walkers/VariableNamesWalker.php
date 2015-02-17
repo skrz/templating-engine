@@ -9,6 +9,7 @@ use Skrz\Templating\Engine\AST\EchoNode;
 use Skrz\Templating\Engine\AST\ExpressionNode;
 use Skrz\Templating\Engine\AST\ForeachNode;
 use Skrz\Templating\Engine\AST\ForNode;
+use Skrz\Templating\Engine\AST\FunctionDeclarationNode;
 use Skrz\Templating\Engine\AST\FunctionNode;
 use Skrz\Templating\Engine\AST\IfNode;
 use Skrz\Templating\Engine\AST\IncludeNode;
@@ -26,6 +27,19 @@ use Skrz\Templating\Engine\AST\TextNode;
  */
 class VariableNamesWalker extends AbstractASTWalker
 {
+
+	public function walkEach(array $nodes)
+	{
+		$variableNames = array();
+
+		foreach ($nodes as $node) {
+			foreach ($this->walk($node) as $k => $v) {
+				$variableNames[$k] = $v;
+			}
+		}
+
+		return $variableNames;
+	}
 
 	protected function walkAssignment(AssignmentNode $assignment)
 	{
@@ -100,6 +114,23 @@ class VariableNamesWalker extends AbstractASTWalker
 	protected function walkFunction(FunctionNode $function)
 	{
 		return array();
+	}
+
+	protected function walkFunctionDeclaration(FunctionDeclarationNode $functionDeclaration)
+	{
+		$variableNames = array();
+
+		foreach ($functionDeclaration->getBody() as $statement) {
+			foreach ($this->walk($statement) as $name => $_) {
+				$variableNames[$name] = true;
+			}
+		}
+
+		foreach ($functionDeclaration->getDefaultArguments() as $name => $argument) {
+			$variableNames[$name] = true;
+		}
+
+		return $variableNames;
 	}
 
 	protected function walkIf(IfNode $if)

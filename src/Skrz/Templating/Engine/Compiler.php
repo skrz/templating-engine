@@ -1,6 +1,7 @@
 <?php
 namespace Skrz\Templating\Engine;
 
+use Skrz\Templating\Engine\AST\AbstractNode;
 use Skrz\Templating\Engine\AST\AssignmentNode;
 use Skrz\Templating\Engine\AST\BlockNode;
 use Skrz\Templating\Engine\AST\CaptureNode;
@@ -9,6 +10,7 @@ use Skrz\Templating\Engine\AST\EchoNode;
 use Skrz\Templating\Engine\AST\ExpressionNode;
 use Skrz\Templating\Engine\AST\ForeachNode;
 use Skrz\Templating\Engine\AST\ForNode;
+use Skrz\Templating\Engine\AST\FunctionDeclarationNode;
 use Skrz\Templating\Engine\AST\FunctionNode;
 use Skrz\Templating\Engine\AST\IfNode;
 use Skrz\Templating\Engine\AST\IncludeNode;
@@ -19,6 +21,7 @@ use Skrz\Templating\Engine\AST\StripNode;
 use Skrz\Templating\Engine\AST\TemplateNode;
 use Skrz\Templating\Engine\AST\TextNode;
 use Skrz\Templating\Engine\AST\Walkers\AbstractASTWalker;
+use Skrz\Templating\Engine\AST\Walkers\FunctionDeclarationsWalker;
 use Skrz\Templating\Engine\AST\Walkers\VariableNamesWalker;
 use Skrz\Templating\Engine\VO\StatementAndExpressionVO;
 
@@ -92,7 +95,67 @@ class Compiler extends AbstractASTWalker
 		$ret .= "}\n";
 		$ret .= "\n";
 
-		$ret .= "public function render(array \$____) {\n";
+		$ret .= "public function fetchFunction(\$functionName, array \$____) {\n";
+		$ret .= "\tob_start();\n";
+		$ret .= "\t\$this->{'render' . \$functionName}(\$____);\n";
+		$ret .= "\treturn ob_get_clean();\n";
+		$ret .= "}\n";
+		$ret .= "\n";
+
+		$ret .= "public function renderFunction(\$functionName, array \$____) {\n";
+		$ret .= "\t\$this->{'render' . \$functionName}(\$____);\n";
+		$ret .= "}\n";
+		$ret .= "\n";
+
+		// find function declarations
+		$functionDeclarationFinder = new FunctionDeclarationsWalker();
+		$functionDeclarationFinder->walk($this->context->getTemplate());
+
+		// function declarations have to be registered first and compiled into render functions,
+		// otherwise recursive calls would not be possible
+		foreach ($functionDeclarationFinder->getDeclarations() as $declaration) {
+			$this->context->addFunction($declaration->getName(), function (Compiler $compiler, FunctionNode $node) use ($declaration) {
+				$statement = "";
+				$args = "array(";
+				foreach ($node->getArguments() as $name => $expression) {
+					$statementAndExpression = $compiler->walkExpression($expression);
+					$statement .= $statementAndExpression->getStatement();
+					$args .= var_export($name, true) . '=>' . $statementAndExpression->getExpression() . ",";
+				}
+				$args .= ")";
+				return new FunctionCompilerResult($statement . "\$this->" . $this->getRenderName($declaration->getName()) . "(" . $args . " + \$____);");
+			});
+		}
+
+		foreach ($functionDeclarationFinder->getDeclarations() as $declaration) {
+			$ret .= $this->compileRender($declaration->getName(), $declaration->getBody(), $declaration->getDefaultArguments());
+		}
+
+		// compile main render
+		$ret .= $this->compileRender("", array($this->context->getTemplate()));
+
+		// end
+		$ret .= "\n";
+		$ret .= "}\n";
+
+		return $ret;
+	}
+
+	private function getRenderName($name)
+	{
+		return "render" . ucfirst($name);
+	}
+
+	/**
+	 * @param string $name
+	 * @param AbstractNode[] $body
+	 * @param ExpressionNode[] $defaults
+	 * @return string
+	 * @throws CompilerException
+	 */
+	private function compileRender($name, $body, $defaults = array())
+	{
+		$ret = "public function " . $this->getRenderName($name) . "(array \$____) {\n";
 		$ret .= "\$____ = \$____;\n"; // FIXME: why?
 
 		if ($this->context->getAppPath() && $this->context->getOutputFileName()) {
@@ -133,7 +196,7 @@ class Compiler extends AbstractASTWalker
 
 		$ret .= "\$smarty = (object) array('current_dir' => {$dirName}, 'get' => \$_GET, 'post' => \$_POST, 'cookie' => \$_COOKIE, 'now' => time(), 'capture' => (object) array(), 'foreach' => (object) array(), 'section' => (object) array());";
 
-
+		// prepare variable names
 		$finder = new VariableNamesWalker;
 		$variableNames = array_keys($finder->walk($this->context->getTemplate()));
 
@@ -145,20 +208,24 @@ class Compiler extends AbstractASTWalker
 			$ret .= "if(isset(\$____['$variableName'])){";
 			$ret .= "\$$variableName=\$____['$variableName'];";
 			$ret .= "}else{";
-			$ret .= "\$$variableName=null;";
+			if (isset($defaults[$variableName])) {
+				$statementAndExpression = $this->walkExpression($defaults[$variableName]);
+				$ret .= $statementAndExpression->getStatement();
+				$ret .= "\$$variableName={$statementAndExpression->getExpression()};";
+			} else {
+				$ret .= "\$$variableName=null;";
+			}
 			$ret .= "}\n";
 		}
 
 		// main
 		$ret .= $this->context->getBeforeCode();
 		$ret .= "\n";
-		$ret .= $this->walk($this->context->getTemplate());
+		$ret .= implode("", $this->walkEach($body));
 		$ret .= "\n";
 		$ret .= $this->context->getAfterCode();
-		// end
+
 		$ret .= "\n\n";
-		$ret .= "}\n";
-		$ret .= "\n";
 		$ret .= "}\n";
 
 		return $ret;
@@ -308,6 +375,11 @@ class Compiler extends AbstractASTWalker
 		}
 
 		return $functionResult->getStatement();
+	}
+
+	protected function walkFunctionDeclaration(FunctionDeclarationNode $functionDeclaration)
+	{
+		return "";
 	}
 
 	protected function walkIf(IfNode $if)

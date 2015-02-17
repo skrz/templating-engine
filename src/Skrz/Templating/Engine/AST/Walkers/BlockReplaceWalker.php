@@ -9,6 +9,7 @@ use Skrz\Templating\Engine\AST\EchoNode;
 use Skrz\Templating\Engine\AST\ExpressionNode;
 use Skrz\Templating\Engine\AST\ForeachNode;
 use Skrz\Templating\Engine\AST\ForNode;
+use Skrz\Templating\Engine\AST\FunctionDeclarationNode;
 use Skrz\Templating\Engine\AST\FunctionNode;
 use Skrz\Templating\Engine\AST\IfNode;
 use Skrz\Templating\Engine\AST\IncludeNode;
@@ -96,6 +97,11 @@ class BlockReplaceWalker extends AbstractASTWalker
 	protected function walkFunction(FunctionNode $function)
 	{
 		return $function;
+	}
+
+	protected function walkFunctionDeclaration(FunctionDeclarationNode $functionDeclaration)
+	{
+		return $functionDeclaration;
 	}
 
 	protected function walkIf(IfNode $if)

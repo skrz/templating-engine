@@ -75,6 +75,8 @@ statement
   / literal
   / strip
   / use
+  / function_declaration
+  / call
   / assign
   / function
   / assignment
@@ -149,6 +151,7 @@ use
         }
         return new \Skrz\Templating\Engine\AST\TextNode("");
     }
+
 
 foreach
   = p:^ "{foreach" __
@@ -473,24 +476,99 @@ block
         );
     }
 
-reserved_function_names
-  = "include"
-  / "if"
-  / "elseif"
-  / "else"
-  / "foreach"
-  / "foreachelse"
-  / "capture"
-  / "ldelim"
-  / "rdelim"
-  / "php"
-  / "for"
-  / "forelse"
-  / "literal"
-  / "strip"
+function_declaration
+  = "{function" p:^ __
+    fname:( fnameid:id !"=" __ -> $fnameid
+          )?
+    args:( "name=" v:(id / string / number) -> array("name", $v)
+         / k:id "=" v:(id / string / number) __ -> array($k, new \Skrz\Templating\Engine\AST\ExpressionNode($v instanceof \Skrz\Templating\Engine\AST\PHPNode ? $v : new \Skrz\Templating\Engine\AST\PHPNode(var_export($v, true)), array()))
+         )*
+    "}"
+    body:statements
+    "{/function" __ "}"
+    -> {
+        list($row, $column) = $p;
+
+        $argsAssoc = array();
+        foreach ($args as $arg) {
+            list($k, $v) = $arg;
+            $argsAssoc[$k] = $v;
+        }
+
+        if (empty($fname)) {
+            if (isset($argsAssoc['name'])) {
+                $fname = $argsAssoc['name'];
+                unset($argsAssoc['name']);
+
+            } else {
+                throw new ParserException(
+                    $this->context,
+                    "No {function} name specified in " .
+                    $this->context->getFileName() .
+                    " @ " . $row . ":" . $column
+                );
+            }
+
+        } elseif (!empty($argsAssoc['name'])) {
+            throw new ParserException(
+                $this->context,
+                "Either use {function my_name ...}, or {function name='my_name' ...} in " .
+                $this->context->getFileName() .
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        return new \Skrz\Templating\Engine\AST\FunctionDeclarationNode($fname, $argsAssoc, $body, $this->context->getFileName(), $p[0], $p[1]);
+    }
+
+
+call
+  = "{call" p:^ __
+    fname:( fnameid:id !"=" __ -> $fnameid
+          )?
+    args:( "name=" v:(id / string) __ -> array("name", $v)
+         / k:id "=" v:(!(id "=") expression) __ modifiers:( "|" __ p:^ "@"? name:id __ args:( ":" __ modExpr:expression __ -> $modExpr
+                                                                                            )*
+                                                             -> new \Skrz\Templating\Engine\AST\ModifierNode($name, $args, $this->context->getFileName(), $p[0], $p[1])
+                                                          )* __ -> array($k, new \Skrz\Templating\Engine\AST\ExpressionNode($v, (array)$modifiers))
+         )*
+    "}"
+    -> {
+        list($row, $column) = $p;
+
+        $argsAssoc = array();
+        foreach ($args as $arg) {
+            list($k, $v) = $arg;
+            $argsAssoc[$k] = $v;
+        }
+
+        if (empty($fname)) {
+            if (isset($argsAssoc['name'])) {
+                $fname = $argsAssoc['name'];
+                unset($argsAssoc['name']);
+
+            } else {
+                throw new ParserException(
+                    $this->context,
+                    "{call} with no function name in " .
+                    $this->context->getFileName() .
+                    " @ " . $row . ":" . $column
+                );
+            }
+        } elseif (!empty($argsAssoc['name'])) {
+            throw new ParserException(
+                $this->context,
+                "Either use {call my_name ...}, or {call name='my_name' ...} in " .
+                $this->context->getFileName() .
+                " @ " . $row . ":" . $column
+            );
+        }
+
+        return new \Skrz\Templating\Engine\AST\FunctionNode($fname, $argsAssoc, $this->context->getFileName(), $p[0], $p[1]);
+    }
 
 function
-  = "{" !reserved_function_names p:^ fname:id __
+  = "{" p:^ fname:id __ ?-> !in_array($fname, array("include", "if", "elseif", "else", "foreach", "foreachelse", "capture", "ldelim", "rdelim", "php", "for", "forelse", "literal", "strip", "function", "call"))
     args:( k:id "=" v:(!(id "=") expression) __ modifiers:( "|" __ p:^ "@"? name:id __ args:( ":" __ modExpr:expression __ -> $modExpr
                                                                                             )*
                                                              -> new \Skrz\Templating\Engine\AST\ModifierNode($name, $args, $this->context->getFileName(), $p[0], $p[1])
