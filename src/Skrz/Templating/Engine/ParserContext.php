@@ -23,6 +23,9 @@ class ParserContext
 	/** @var string absolute path to file */
 	private $fileName;
 
+	/** @var string[] all file names used in this context and all derived contexts */
+	private $allFileNames = [];
+
 	/** @var string base template directory, from which templates get loaded */
 	private $baseDirectory;
 
@@ -76,6 +79,11 @@ class ParserContext
 	public function getFileName()
 	{
 		return $this->fileName;
+	}
+
+	public function getAllFileNames()
+	{
+		return $this->allFileNames;
 	}
 
 	public function getBaseDirectory()
@@ -149,6 +157,9 @@ class ParserContext
 			}
 
 			$this->fileName = $fileName;
+			if (!in_array($this->fileName, $this->allFileNames)) {
+				$this->allFileNames[] = $this->fileName;
+			}
 		}
 
 		if ($this->file === null) {
@@ -245,8 +256,8 @@ class ParserContext
 		$derivedContext->fileName = null;
 		$derivedContext->variableName = array();
 		$derivedContext->assignedVariableNames = array();
-		// intentionally & => derived contexts share same uses
-		$derivedContext->uses =& $this->uses;
+		$derivedContext->uses =& $this->uses; // intentionally `=&` - derived contexts share same uses
+		$derivedContext->allFileNames =& $this->allFileNames; // intentionally `=&` - derived contexts share all file names
 		$derivedContext->setFile($file);
 
 		return $derivedContext;
