@@ -157,6 +157,7 @@ class ParserTest extends \PHPUnit_Framework_TestCase
 			array('{function empty_fn}{/function}'),
 			array('{function name="barbar"}barbar{/function}'),
 			array('{function form_widget}{/function}{form_widget}'),
+			array('{function form_widget}a{/function}{function form_widget}b{/function}{form_widget}'),
 		);
 	}
 

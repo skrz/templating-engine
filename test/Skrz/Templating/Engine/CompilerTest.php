@@ -144,6 +144,7 @@ class CompilerTest extends \PHPUnit_Framework_TestCase
 			array('{function myFn withDefault="hey!"}{$withDefault}{/function}{myFn}', 'hey!', array()),
 			array('{function menu level=0}{if $level < 3}{$level},{menu level=$level+1}{/if}{/function}{menu}', '0,1,2,', array()),
 			array('{function x}{$foo}{/function}{x}', 'bar', array('foo' => 'bar')),
+			array('{function form_widget}a{/function}{function form_widget}b{/function}{form_widget}', 'b', array()),
 		);
 	}
 
