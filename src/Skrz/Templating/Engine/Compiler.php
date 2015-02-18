@@ -113,7 +113,9 @@ class Compiler extends AbstractASTWalker
 
 		// function declarations have to be registered first and compiled into render functions,
 		// otherwise recursive calls would not be possible
+		$ret .= "private \$functions = array(";
 		foreach ($functionDeclarationFinder->getDeclarations() as $declaration) {
+			$ret .= var_export($declaration->getName(), true) . "=>true,";
 			$this->context->addFunction($declaration->getName(), function (Compiler $compiler, FunctionNode $node) use ($declaration) {
 				$statement = "";
 				$args = "array(";
@@ -126,6 +128,11 @@ class Compiler extends AbstractASTWalker
 				return new FunctionCompilerResult($statement . "\$this->" . $this->getRenderName($declaration->getName()) . "(" . $args . " + \$____);");
 			});
 		}
+		$ret .= ");\n\n";
+
+		$ret .= "public function hasFunction(\$functionName) {\n";
+		$ret .= "\treturn isset(\$this->functions[\$functionName]);\n";
+		$ret .= "}\n\n";
 
 		foreach ($functionDeclarationFinder->getDeclarations() as $declaration) {
 			$ret .= $this->compileRender($declaration->getName(), $declaration->getBody(), $declaration->getDefaultArguments());

@@ -5,12 +5,12 @@ interface TemplateInterface
 {
 
 	/**
-	 * Renders template into string
+	 * Returns true/false whether the template contains function by given name (and hence fetchFunction(), renderFunction() can be called)
 	 *
-	 * @param array $data
-	 * @return string
+	 * @param string $functionName
+	 * @return boolean
 	 */
-	public function fetch(array $data);
+	public function hasFunction($functionName);
 
 	/**
 	 * Renders named {function ...} into string
@@ -22,14 +22,6 @@ interface TemplateInterface
 	public function fetchFunction($functionName, array $data);
 
 	/**
-	 * Renders template into output buffer
-	 *
-	 * @param array $data
-	 * @return void
-	 */
-	public function render(array $data);
-
-	/**
 	 * Renders named {function ...} into output buffer
 	 *
 	 * @param string $functionName
@@ -37,5 +29,21 @@ interface TemplateInterface
 	 * @return void
 	 */
 	public function renderFunction($functionName, array $data);
+
+	/**
+	 * Renders template into string
+	 *
+	 * @param array $data
+	 * @return string
+	 */
+	public function fetch(array $data);
+
+	/**
+	 * Renders template into output buffer
+	 *
+	 * @param array $data
+	 * @return void
+	 */
+	public function render(array $data);
 
 }
