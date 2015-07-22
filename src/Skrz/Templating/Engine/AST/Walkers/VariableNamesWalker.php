@@ -240,4 +240,5 @@ class VariableNamesWalker extends AbstractASTWalker
 	{
 		return array();
 	}
+
 }

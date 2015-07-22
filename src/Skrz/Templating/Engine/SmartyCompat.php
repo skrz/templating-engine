@@ -243,8 +243,7 @@ class SmartyCompat
 			$this->compilerContext->setClassName("Template_" . md5($this->parserContext->getString()));
 
 		} else {
-			if (
-				!is_null($this->parserContext->getBaseDirectory()) &&
+			if (!is_null($this->parserContext->getBaseDirectory()) &&
 				strncmp(
 					$templateFile,
 					$this->parserContext->getBaseDirectory(),

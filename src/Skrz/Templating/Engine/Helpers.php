@@ -28,8 +28,9 @@ class Helpers
 	 */
 	public static function truncate($string, $length = 80, $etc = '...', $break_words = false, $middle = false)
 	{
-		if ($length == 0)
+		if ($length == 0) {
 			return '';
+		}
 
 		if (function_exists('mb_strlen')) {
 			if (mb_strlen($string, 'UTF-8') > $length) {
@@ -101,4 +102,4 @@ class Helpers
 		return $date->format($format);
 	}
 
-} 
+}

@@ -8,5 +8,4 @@ namespace Skrz\Templating\Engine\AST;
  */
 abstract class AbstractNode
 {
-
 }

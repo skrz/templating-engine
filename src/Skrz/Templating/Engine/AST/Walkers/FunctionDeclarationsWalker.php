@@ -1,5 +1,6 @@
 <?php
 namespace Skrz\Templating\Engine\AST\Walkers;
+
 use Skrz\Templating\Engine\AST\AssignmentNode;
 use Skrz\Templating\Engine\AST\BlockNode;
 use Skrz\Templating\Engine\AST\CaptureNode;

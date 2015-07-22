@@ -224,7 +224,7 @@ class ParserContext
 			}
 
 			$fileContents = @file_get_contents($fileName); // intentionally @
-			if ($fileContents === FALSE) {
+			if ($fileContents === false) {
 				throw new ParserException($this, "file $fileName does not exists or is not readable");
 			}
 

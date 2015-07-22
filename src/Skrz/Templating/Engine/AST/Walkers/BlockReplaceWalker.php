@@ -163,7 +163,8 @@ class BlockReplaceWalker extends AbstractASTWalker
 		if (!isset($this->replacingBlocks[$block->getName()])) {
 			return new BlockNode(
 				$block->getName(),
-				null, null,
+				null,
+				null,
 				$this->walkEach($block->getBody()),
 				$block->getFileName(),
 				$block->getRow(),
@@ -175,7 +176,8 @@ class BlockReplaceWalker extends AbstractASTWalker
 			if ($replacingBlock->getAppend()) {
 				return new BlockNode(
 					$block->getName(),
-					null,					null,
+					null,
+					null,
 					array_merge($this->walkEach($replacingBlock->getBody()), $this->walkEach($block->getBody())),
 					$replacingBlock->getFileName(),
 					$replacingBlock->getRow(),
@@ -185,7 +187,8 @@ class BlockReplaceWalker extends AbstractASTWalker
 			} elseif ($replacingBlock->getPrepend()) {
 				return new BlockNode(
 					$block->getName(),
-					null,null,
+					null,
+					null,
 					array_merge($this->walkEach($block->getBody()), $this->walkEach($replacingBlock->getBody())),
 					$replacingBlock->getFileName(),
 					$replacingBlock->getRow(),
@@ -195,7 +198,8 @@ class BlockReplaceWalker extends AbstractASTWalker
 			} else {
 				return new BlockNode(
 					$block->getName(),
-					null,null,
+					null,
+					null,
 					$this->walkEach($replacingBlock->getBody()),
 					$replacingBlock->getFileName(),
 					$replacingBlock->getRow(),
@@ -209,6 +213,5 @@ class BlockReplaceWalker extends AbstractASTWalker
 	{
 		return $expression;
 	}
-
 
 }
