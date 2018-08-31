@@ -288,7 +288,7 @@ class Compiler extends AbstractASTWalker
 
 	protected function walkComment(CommentNode $comment)
 	{
-		return "";
+		return "/* {$comment->getComment()} */";
 	}
 
 	protected function walkEcho(EchoNode $echo)
