@@ -1,6 +1,18 @@
 <?php
 namespace Skrz\Templating\Engine;
 
+use DateTime;
+use DateTimeInterface;
+use function get_class;
+use function gettype;
+use function is_null;
+use function is_numeric;
+use function is_object;
+use function is_string;
+use function mb_strlen;
+use function mb_strtoupper;
+use function mb_substr;
+
 /**
  * Utility functions used by templates
  *
@@ -75,7 +87,7 @@ class Helpers
 	}
 
 	/**
-	 * @param \DateTime|string|int $date
+	 * @param DateTime|string|int $date
 	 * @param string $format
 	 * @return string
 	 * @throws TemplateException
@@ -86,12 +98,12 @@ class Helpers
 			return null;
 
 		} elseif (is_numeric($date)) {
-			$date = new \DateTime("@$date");
+			$date = new DateTime("@$date");
 
 		} elseif (is_string($date)) {
-			$date = new \DateTime($date);
+			$date = new DateTime($date);
 
-		} elseif (!($date instanceof \DateTime)) {
+		} elseif (!$date instanceof DateTimeInterface) {
 			throw new TemplateException(
 				"Unsupported date of type " . gettype($date) .
 				(is_object($date) ? " of class " . get_class($date) : "") .
