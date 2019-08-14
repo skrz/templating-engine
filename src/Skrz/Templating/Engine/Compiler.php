@@ -502,6 +502,7 @@ class Compiler extends AbstractASTWalker
 	protected function walkStrip(StripNode $strip)
 	{
 		$sym = $this->gensym();
+		$vsym = $this->gensym();
 		$echosym = $this->gensym();
 		$ret = "";
 
@@ -509,7 +510,8 @@ class Compiler extends AbstractASTWalker
 		$ret .= implode("", $this->walkEach($strip->getBody()));
 		$ret .= "{$sym} = ob_get_clean();";
 		$ret .= "{$sym} = preg_split('/\\r\\n|\\r|\\n/', {$sym});";
-		$ret .= "{$echosym} = implode('\n', array_filter(array_map('trim', {$sym})));";
+		$ret .= "{$echosym} = '';";
+		$ret .= "foreach ({$sym} as {$vsym}) { {$echosym} .= trim({$vsym}); }";
 		$ret .= "echo {$echosym};";
 
 		return $ret;
